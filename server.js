@@ -5,65 +5,94 @@ const { exec } = require("child_process");
 const app = express();
 app.use(cors());
 
-// TEST ROUTE
-app.get("/", (req, res) => {
-  res.send("Server running 🚀");
-});
+function run(cmd, cb){
+  exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, cb);
+}
 
-// API ROUTE (FIXED FOR YOUTUBE)
+// ✅ API
 app.get("/api", (req, res) => {
   const url = req.query.url;
+  if (!url) return res.json({ error: "No URL" });
 
-  if (!url) return res.json({ error: "No URL provided" });
+  // JSON try
+  const cmd = `yt-dlp -J --no-playlist --no-warnings "${url}"`;
 
-  const cmd = `python3 -m yt_dlp --add-header "User-Agent: Mozilla/5.0" --extractor-args "youtube:player_client=android" -J "${url}"`;
+  run(cmd, (err, stdout) => {
 
-  exec(cmd, (err, stdout, stderr) => {
-    if (err) {
+    if (!err && stdout) {
+      try {
+        const data = JSON.parse(stdout);
+
+        let formats = [];
+
+        if (data.formats) {
+          formats = data.formats
+            .filter(f => f.ext === "mp4" && f.height)
+            .map(f => ({
+              quality: f.height + "p",
+              format_id: f.format_id
+            }))
+            .sort((a,b)=>parseInt(b.quality)-parseInt(a.quality))
+            .slice(0,5);
+        }
+
+        // fallback
+        if (formats.length === 0 && data.url) {
+          return res.json({
+            title: data.title,
+            thumbnail: data.thumbnail,
+            formats: [{ quality: "Auto", format_id: "direct" }],
+            direct: data.url
+          });
+        }
+
+        if (formats.length > 0) {
+          return res.json({
+            title: data.title,
+            thumbnail: data.thumbnail,
+            formats
+          });
+        }
+
+      } catch {}
+    }
+
+    // 🔥 fallback 2 (important)
+    const cmd2 = `yt-dlp -g "${url}"`;
+    run(cmd2, (e2, out2) => {
+      if (e2 || !out2) {
+        return res.json({ error: "Fetch failed" });
+      }
+
       return res.json({
-        error: "yt-dlp failed",
-        details: stderr
+        title: "Video",
+        thumbnail: "",
+        formats: [{ quality: "Auto", format_id: "direct" }],
+        direct: out2.trim()
       });
-    }
+    });
 
-    try {
-      const data = JSON.parse(stdout);
-
-      const formats = data.formats
-        .filter(f => f.ext === "mp4" && f.format_id)
-        .slice(-6)
-        .map(f => ({
-          quality: f.format_note || (f.height ? f.height + "p" : "auto"),
-          format_id: f.format_id
-        }));
-
-      res.json({
-        title: data.title,
-        thumbnail: data.thumbnail,
-        formats
-      });
-
-    } catch {
-      res.json({ error: "Parse error" });
-    }
   });
 });
 
-// DOWNLOAD ROUTE
+// ✅ DOWNLOAD
 app.get("/download", (req, res) => {
-  const { url, format } = req.query;
+  const { url, format, direct } = req.query;
 
-  if (!url || !format) return res.send("Missing params");
+  // direct case
+  if (format === "direct" && direct) {
+    return res.redirect(direct);
+  }
 
-  const file = "video.mp4";
+  const cmd = `yt-dlp -f ${format} -o - "${url}"`;
+  const p = exec(cmd);
 
-  const cmd = `python3 -m yt_dlp -f ${format} -o "${file}" "${url}"`;
+  res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
+  res.setHeader("Content-Type", "video/mp4");
 
-  exec(cmd, (err) => {
-    if (err) return res.send("Download failed");
-
-    res.download(file);
-  });
+  p.stdout.pipe(res);
 });
 
-app.listen(3000, () => console.log("Server running on port 3000"));
+app.listen(process.env.PORT || 3000, () =>
+  console.log("Server running")
+);
