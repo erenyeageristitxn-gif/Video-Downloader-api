@@ -5,18 +5,20 @@ const { exec } = require("child_process");
 const app = express();
 app.use(cors());
 
-// TEST
+// TEST ROUTE
 app.get("/", (req, res) => {
   res.send("Server running 🚀");
 });
 
-// VIDEO INFO
+// API ROUTE (FIXED FOR YOUTUBE)
 app.get("/api", (req, res) => {
   const url = req.query.url;
 
   if (!url) return res.json({ error: "No URL provided" });
 
-  exec(`python3 -m yt_dlp -J "${url}"`, (err, stdout, stderr) => {
+  const cmd = `python3 -m yt_dlp --add-header "User-Agent: Mozilla/5.0" --extractor-args "youtube:player_client=android" -J "${url}"`;
+
+  exec(cmd, (err, stdout, stderr) => {
     if (err) {
       return res.json({
         error: "yt-dlp failed",
@@ -41,13 +43,13 @@ app.get("/api", (req, res) => {
         formats
       });
 
-    } catch (e) {
+    } catch {
       res.json({ error: "Parse error" });
     }
   });
 });
 
-// DOWNLOAD
+// DOWNLOAD ROUTE
 app.get("/download", (req, res) => {
   const { url, format } = req.query;
 
@@ -55,7 +57,9 @@ app.get("/download", (req, res) => {
 
   const file = "video.mp4";
 
-  exec(`python3 -m yt_dlp -f ${format} -o "${file}" "${url}"`, (err) => {
+  const cmd = `python3 -m yt_dlp -f ${format} -o "${file}" "${url}"`;
+
+  exec(cmd, (err) => {
     if (err) return res.send("Download failed");
 
     res.download(file);
