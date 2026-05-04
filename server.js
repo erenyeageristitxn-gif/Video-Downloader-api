@@ -5,16 +5,21 @@ const { exec } = require("child_process");
 const app = express();
 app.use(cors());
 
+// helper
 function run(cmd, cb){
   exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, cb);
 }
 
+// ✅ ROOT FIX (IMPORTANT)
+app.get("/", (req, res) => {
+  res.send("✅ VideoGrab API is running");
+});
+
 // ✅ API
 app.get("/api", (req, res) => {
   const url = req.query.url;
-  if (!url) return res.json({ error: "No URL" });
+  if (!url) return res.json({ error: "No URL provided" });
 
-  // JSON try
   const cmd = `yt-dlp -J --no-playlist --no-warnings "${url}"`;
 
   run(cmd, (err, stdout) => {
@@ -36,11 +41,11 @@ app.get("/api", (req, res) => {
             .slice(0,5);
         }
 
-        // fallback
+        // 🔥 fallback 1
         if (formats.length === 0 && data.url) {
           return res.json({
-            title: data.title,
-            thumbnail: data.thumbnail,
+            title: data.title || "Video",
+            thumbnail: data.thumbnail || "",
             formats: [{ quality: "Auto", format_id: "direct" }],
             direct: data.url
           });
@@ -48,8 +53,8 @@ app.get("/api", (req, res) => {
 
         if (formats.length > 0) {
           return res.json({
-            title: data.title,
-            thumbnail: data.thumbnail,
+            title: data.title || "Video",
+            thumbnail: data.thumbnail || "",
             formats
           });
         }
@@ -59,6 +64,7 @@ app.get("/api", (req, res) => {
 
     // 🔥 fallback 2 (important)
     const cmd2 = `yt-dlp -g "${url}"`;
+
     run(cmd2, (e2, out2) => {
       if (e2 || !out2) {
         return res.json({ error: "Fetch failed" });
@@ -93,6 +99,8 @@ app.get("/download", (req, res) => {
   p.stdout.pipe(res);
 });
 
-app.listen(process.env.PORT || 3000, () =>
-  console.log("Server running")
-);
+// ✅ START
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Server running on port " + PORT);
+});
