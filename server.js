@@ -1,23 +1,28 @@
 const express = require("express");
 const cors = require("cors");
 const { exec } = require("child_process");
-const fs = require("fs");
 
 const app = express();
 app.use(cors());
 
-// TEST ROUTE
+// TEST
 app.get("/", (req, res) => {
   res.send("Server running 🚀");
 });
 
-// VIDEO INFO API
+// VIDEO INFO
 app.get("/api", (req, res) => {
   const url = req.query.url;
+
   if (!url) return res.json({ error: "No URL provided" });
 
-  exec(`python -m yt_dlp -j "${url}"`, (err, stdout) => {
-    if (err) return res.json({ error: "yt-dlp failed" });
+  exec(`python3 -m yt_dlp -J "${url}"`, (err, stdout, stderr) => {
+    if (err) {
+      return res.json({
+        error: "yt-dlp failed",
+        details: stderr
+      });
+    }
 
     try {
       const data = JSON.parse(stdout);
@@ -36,13 +41,13 @@ app.get("/api", (req, res) => {
         formats
       });
 
-    } catch {
+    } catch (e) {
       res.json({ error: "Parse error" });
     }
   });
 });
 
-// DOWNLOAD API
+// DOWNLOAD
 app.get("/download", (req, res) => {
   const { url, format } = req.query;
 
@@ -50,12 +55,10 @@ app.get("/download", (req, res) => {
 
   const file = "video.mp4";
 
-  exec(`python -m yt_dlp -f ${format} -o "${file}" "${url}"`, (err) => {
+  exec(`python3 -m yt_dlp -f ${format} -o "${file}" "${url}"`, (err) => {
     if (err) return res.send("Download failed");
 
-    res.download(file, () => {
-      fs.unlinkSync(file); // delete after download
-    });
+    res.download(file);
   });
 });
 
